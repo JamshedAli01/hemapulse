@@ -1,0 +1,557 @@
+openapi: 3.0.3
+info:
+  title: Smart Blood & Emergency Donor Network API
+  version: 1.0.0
+  description: Recommended hackathon API contract for the smart blood donor network.
+servers:
+  - url: http://localhost:8000
+
+tags:
+  - name: Auth
+  - name: Donors
+  - name: Hospitals
+  - name: Blood Requests
+  - name: AI
+  - name: Matching
+  - name: Notifications
+  - name: Donor Responses
+  - name: Donations
+  - name: Dashboard
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer}
+    RequestId:
+      name: request_id
+      in: path
+      required: true
+      schema: {type: integer}
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [name, email, phone, password, role]
+      properties:
+        name: {type: string, example: Ali Ahmed}
+        email: {type: string, format: email, example: ali@example.com}
+        phone: {type: string, example: "+923001234567"}
+        password: {type: string, format: password}
+        role:
+          type: string
+          enum: [ADMIN, REQUESTER, DONOR, HOSPITAL]
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password}
+
+    DonorRequest:
+      type: object
+      required: [user_id, blood_group, date_of_birth, city, latitude, longitude]
+      properties:
+        user_id: {type: integer}
+        blood_group: {type: string, example: B+}
+        date_of_birth: {type: string, format: date}
+        city: {type: string, example: Jamshoro}
+        latitude: {type: number, format: double}
+        longitude: {type: number, format: double}
+        is_available: {type: boolean, default: true}
+        is_eligible: {type: boolean, default: true}
+        last_donation_date: {type: string, format: date, nullable: true}
+
+    HospitalRequest:
+      type: object
+      required: [name, address, city, latitude, longitude]
+      properties:
+        name: {type: string}
+        address: {type: string}
+        city: {type: string}
+        phone: {type: string}
+        latitude: {type: number, format: double}
+        longitude: {type: number, format: double}
+
+    BloodRequestCreate:
+      type: object
+      required: [hospital_id, blood_group, units_required, required_before, description, latitude, longitude]
+      properties:
+        hospital_id: {type: integer}
+        blood_group: {type: string, example: B+}
+        units_required: {type: integer, minimum: 1, example: 2}
+        required_before: {type: string, format: date-time}
+        description: {type: string}
+        latitude: {type: number, format: double}
+        longitude: {type: number, format: double}
+
+    VerifyRequest:
+      type: object
+      required: [verified]
+      properties:
+        verified: {type: boolean}
+        notes: {type: string}
+
+    AnalyzeRequest:
+      type: object
+      required: [request_id, description]
+      properties:
+        request_id: {type: integer}
+        description: {type: string}
+
+    EscalateRequest:
+      type: object
+      required: [current_radius_km, next_radius_km, batch_size]
+      properties:
+        current_radius_km: {type: number, example: 5}
+        next_radius_km: {type: number, example: 10}
+        batch_size: {type: integer, example: 10}
+
+    SendNotificationRequest:
+      type: object
+      required: [donor_ids, channel]
+      properties:
+        donor_ids:
+          type: array
+          items: {type: integer}
+        channel:
+          type: string
+          enum: [IN_APP, EMAIL, SMS]
+
+    DonorResponseRequest:
+      type: object
+      required: [donor_id]
+      properties:
+        donor_id: {type: integer}
+
+    DeclineRequest:
+      type: object
+      required: [donor_id]
+      properties:
+        donor_id: {type: integer}
+        reason: {type: string}
+
+    DonationCreate:
+      type: object
+      required: [request_id, donor_id, units]
+      properties:
+        request_id: {type: integer}
+        donor_id: {type: integer}
+        units: {type: integer, minimum: 1}
+
+    ConfirmDonation:
+      type: object
+      required: [confirmation_method]
+      properties:
+        confirmation_method:
+          type: string
+          enum: [MANUAL, HOSPITAL, QR]
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegisterRequest'}
+      responses:
+        '201': {description: Registered successfully}
+        '400': {description: Invalid request}
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200': {description: Login successful}
+        '401': {description: Invalid credentials}
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Current user}
+
+  /api/donors:
+    get:
+      tags: [Donors]
+      summary: List donors
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: blood_group, in: query, schema: {type: string}}
+        - {name: city, in: query, schema: {type: string}}
+        - {name: available, in: query, schema: {type: boolean}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200': {description: Donor list}
+    post:
+      tags: [Donors]
+      summary: Create donor profile
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DonorRequest'}
+      responses:
+        '201': {description: Donor created}
+
+  /api/donors/{id}:
+    get:
+      tags: [Donors]
+      summary: Get donor
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses:
+        '200': {description: Donor details}
+        '404': {description: Donor not found}
+
+  /api/donors/{id}/availability:
+    patch:
+      tags: [Donors]
+      summary: Update donor availability
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_available]
+              properties:
+                is_available: {type: boolean}
+      responses:
+        '200': {description: Availability updated}
+
+  /api/hospitals:
+    get:
+      tags: [Hospitals]
+      summary: List hospitals
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Hospital list}
+    post:
+      tags: [Hospitals]
+      summary: Create hospital
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/HospitalRequest'}
+      responses:
+        '201': {description: Hospital created}
+
+  /api/hospitals/{id}:
+    get:
+      tags: [Hospitals]
+      summary: Get hospital
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses:
+        '200': {description: Hospital details}
+
+  /api/requests:
+    get:
+      tags: [Blood Requests]
+      summary: List blood requests
+      security: [{bearerAuth: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string}}
+        - {name: blood_group, in: query, schema: {type: string}}
+        - {name: urgency, in: query, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer}}
+        - {name: page_size, in: query, schema: {type: integer}}
+      responses:
+        '200': {description: Request list}
+    post:
+      tags: [Blood Requests]
+      summary: Create blood request
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BloodRequestCreate'}
+      responses:
+        '201': {description: Blood request created}
+
+  /api/requests/{id}:
+    get:
+      tags: [Blood Requests]
+      summary: Get blood request
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses:
+        '200': {description: Request details}
+    patch:
+      tags: [Blood Requests]
+      summary: Update blood request
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        '200': {description: Request updated}
+
+  /api/requests/{id}/verify:
+    patch:
+      tags: [Blood Requests]
+      summary: Verify blood request
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VerifyRequest'}
+      responses:
+        '200': {description: Verification updated}
+
+  /api/requests/{id}/cancel:
+    post:
+      tags: [Blood Requests]
+      summary: Cancel blood request
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses:
+        '200': {description: Request cancelled}
+
+  /api/ai/analyze-request:
+    post:
+      tags: [AI]
+      summary: Analyze urgency and summarize request
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AnalyzeRequest'}
+      responses:
+        '200': {description: AI analysis}
+
+  /api/ai/check-duplicate:
+    post:
+      tags: [AI]
+      summary: Check duplicate request
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_id]
+              properties:
+                request_id: {type: integer}
+      responses:
+        '200': {description: Duplicate analysis}
+
+  /api/matching/{request_id}/run:
+    post:
+      tags: [Matching]
+      summary: Run smart donor matching
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      responses:
+        '200': {description: Ranked donor matches}
+
+  /api/matching/{request_id}:
+    get:
+      tags: [Matching]
+      summary: Get donor matches
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      responses:
+        '200': {description: Matches}
+
+  /api/matching/{request_id}/escalate:
+    post:
+      tags: [Matching]
+      summary: Expand matching radius and notify next batch
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EscalateRequest'}
+      responses:
+        '200': {description: Escalation result}
+
+  /api/matching/{request_id}/stop:
+    post:
+      tags: [Matching]
+      summary: Stop matching
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      responses:
+        '200': {description: Matching stopped}
+
+  /api/matching/{request_id}/map:
+    get:
+      tags: [Matching]
+      summary: Get map data for matches
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      responses:
+        '200': {description: Map data}
+
+  /api/notifications/{request_id}/send:
+    post:
+      tags: [Notifications]
+      summary: Send donor notifications
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SendNotificationRequest'}
+      responses:
+        '200': {description: Notifications sent}
+
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Notifications}
+
+  /api/responses/{request_id}/accept:
+    post:
+      tags: [Donor Responses]
+      summary: Accept donation request
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DonorResponseRequest'}
+      responses:
+        '200': {description: Response accepted}
+
+  /api/responses/{request_id}/decline:
+    post:
+      tags: [Donor Responses]
+      summary: Decline donation request
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/RequestId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeclineRequest'}
+      responses:
+        '200': {description: Response declined}
+
+  /api/donations:
+    post:
+      tags: [Donations]
+      summary: Create donation
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DonationCreate'}
+      responses:
+        '201': {description: Donation scheduled}
+
+  /api/donations/{id}/confirm:
+    patch:
+      tags: [Donations]
+      summary: Confirm completed donation
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConfirmDonation'}
+      responses:
+        '200': {description: Donation confirmed}
+
+  /api/donations/{id}/qr:
+    post:
+      tags: [Donations]
+      summary: Generate QR confirmation token
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/Id'}]
+      responses:
+        '200': {description: QR token generated}
+
+  /api/donations/confirm-qr:
+    post:
+      tags: [Donations]
+      summary: Confirm donation using QR token
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_token]
+              properties:
+                qr_token: {type: string}
+      responses:
+        '200': {description: QR donation confirmed}
+
+  /api/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Dashboard summary
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Summary metrics}
+
+  /api/dashboard/blood-groups:
+    get:
+      tags: [Dashboard]
+      summary: Blood group statistics
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Blood group statistics}
+
+  /api/dashboard/requests:
+    get:
+      tags: [Dashboard]
+      summary: Request analytics
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Request analytics}
+
+  /api/dashboard/fulfillment:
+    get:
+      tags: [Dashboard]
+      summary: Fulfillment analytics
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Fulfillment analytics}
