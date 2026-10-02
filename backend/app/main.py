@@ -22,7 +22,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://hemapulse-app.netlify.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -130,4 +134,5 @@ def health_check(db: Session = Depends(get_db)):
         db_status = "error"
 
     return {"status": "ok", "database": db_status}
+
 
