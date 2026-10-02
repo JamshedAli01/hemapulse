@@ -154,7 +154,7 @@ def test_donor_create_and_get():
 
     # Create
     r = client.post(
-        "/api/donors/profile",
+        "/api/donors",
         json={
             "blood_group": "O+",
             "date_of_birth": "1990-01-01",
@@ -172,7 +172,7 @@ def test_donor_create_and_get():
     assert "password_hash" not in data
 
     # Get
-    r2 = client.get("/api/donors/profile", headers=_auth(admin_token))
+    r2 = client.get("/api/donors", headers=_auth(admin_token))
     assert r2.status_code == 200
     assert r2.json()["blood_group"] == "O+"
 
@@ -191,10 +191,10 @@ def test_donor_duplicate_profile():
         "latitude": 31.5204,
         "longitude": 74.3587,
     }
-    r1 = client.post("/api/donors/profile", json=payload, headers=_auth(admin_token))
+    r1 = client.post("/api/donors", json=payload, headers=_auth(admin_token))
     assert r1.status_code == 201
 
-    r2 = client.post("/api/donors/profile", json=payload, headers=_auth(admin_token))
+    r2 = client.post("/api/donors", json=payload, headers=_auth(admin_token))
     assert r2.status_code == 409
 
     _cleanup_donor(uid)
@@ -206,7 +206,7 @@ def test_donor_update():
     _cleanup_donor(uid)
 
     client.post(
-        "/api/donors/profile",
+        "/api/donors",
         json={
             "blood_group": "B+",
             "date_of_birth": "1992-03-15",
@@ -218,7 +218,7 @@ def test_donor_update():
     )
 
     r = client.put(
-        "/api/donors/profile",
+        "/api/donors",
         json={"city": "Rawalpindi", "is_available": False},
         headers=_auth(admin_token),
     )
@@ -230,7 +230,7 @@ def test_donor_update():
 
 
 def test_donor_unauthenticated():
-    r = client.get("/api/donors/profile")
+    r = client.get("/api/donors")
     assert r.status_code == 401
 
 
