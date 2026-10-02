@@ -31,7 +31,7 @@ def create_donation(
     return donation
 
 
-@router.post("/{donation_id}/confirm", response_model=DonationResponse)
+@router.patch("/{donation_id}/confirm", response_model=DonationResponse)
 def confirm_donation(
     donation_id: int,
     payload: ConfirmDonation,

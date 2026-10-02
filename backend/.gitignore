@@ -1,5 +1,8 @@
 venv/
+venv2/
+venv_new/
 __pycache__/
 *.pyc
 .env
 .pytest_cache/
+blood_network.db
