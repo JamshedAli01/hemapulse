@@ -2,8 +2,8 @@ import { apiClient } from './apiClient';
 import { Hospital, HospitalRequest } from '../types/hospital';
 
 export const hospitalService = {
-  listHospitals: async (): Promise<unknown> => {
-    const response = await apiClient.get('/api/hospitals');
+  listHospitals: async (): Promise<Hospital[]> => {
+    const response = await apiClient.get<Hospital[]>('/api/hospitals');
     return response.data;
   },
 

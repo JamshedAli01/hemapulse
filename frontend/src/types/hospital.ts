@@ -2,9 +2,10 @@ export interface HospitalRequest {
   name: string;
   address: string;
   city: string;
-  phone?: string;
   latitude: number;
   longitude: number;
+  contact_phone?: string;
+  contact_email?: string;
 }
 
 export interface Hospital extends HospitalRequest {
