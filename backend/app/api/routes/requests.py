@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.blood_request import BloodRequest
 from app.models.hospital import Hospital
 from app.models.enums import BloodGroup, RequestStatus, RequestUrgency
+from app.services.matching import create_request_matches
 
 router = APIRouter(prefix="/api/requests", tags=["Blood Requests"])
 
@@ -83,6 +84,8 @@ def create_request(
         status=RequestStatus.PENDING,
     )
     db.add(req)
+    db.flush()
+    create_request_matches(db, req)
     db.commit()
     db.refresh(req)
     return req

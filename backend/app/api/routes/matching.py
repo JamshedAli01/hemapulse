@@ -17,8 +17,7 @@ from app.models.enums import (
     NotificationChannel,
     NotificationStatus,
 )
-from app.services.compatibility import compatible_donor_groups
-from app.services.distance import haversine_km
+from app.services.matching import create_request_matches
 
 router = APIRouter(prefix="/api", tags=["Matching"])
 
@@ -85,39 +84,7 @@ def get_matches(
     )
 
     if not existing:
-        # Generate matches: find compatible available donors
-        compatible_groups = compatible_donor_groups(req.blood_group.value)
-        donors = (
-            db.query(Donor)
-            .filter(
-                Donor.blood_group.in_(compatible_groups),
-                Donor.is_available == True,
-                Donor.is_eligible == True,
-            )
-            .all()
-        )
-
-        for donor in donors:
-            dist = haversine_km(
-                req.latitude, req.longitude, donor.latitude, donor.longitude
-            )
-            match = RequestMatch(
-                request_id=req.id,
-                donor_id=donor.id,
-                distance_km=round(dist, 3),
-                is_notified=False,
-            )
-            db.add(match)
-            # Notify donor
-            _notify(
-                db,
-                donor.user_id,
-                donor.id,
-                req.id,
-                "New Blood Request Match",
-                f"You are a blood group match for a {req.blood_group.value} request in {req.latitude},{req.longitude}. Please respond.",
-            )
-
+        create_request_matches(db, req)
         db.commit()
         existing = (
             db.query(RequestMatch).filter(RequestMatch.request_id == request_id).all()
