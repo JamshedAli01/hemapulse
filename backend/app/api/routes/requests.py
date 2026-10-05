@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -9,7 +9,9 @@ from app.core.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.blood_request import BloodRequest
 from app.models.hospital import Hospital
-from app.models.enums import BloodGroup, RequestStatus, RequestUrgency
+from app.models.donor import Donor
+from app.models.request_match import RequestMatch
+from app.models.enums import BloodGroup, RequestStatus, RequestUrgency, UserRole
 from app.services.matching import create_request_matches
 
 router = APIRouter(prefix="/api/requests", tags=["Blood Requests"])
@@ -60,11 +62,31 @@ class RequestOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     hospital: HospitalSummary
+    is_requester: bool = False
+    is_matched_donor: bool = False
 
     model_config = {"from_attributes": True}
 
 
 # ---------- Endpoints ----------
+
+
+def _request_response(
+    request: BloodRequest, current_user: User, db: Session
+) -> dict:
+    response = RequestOut.model_validate(request).model_dump()
+    response["is_requester"] = request.created_by_user_id == current_user.id
+    response["is_matched_donor"] = (
+        db.query(RequestMatch)
+        .join(Donor, RequestMatch.donor_id == Donor.id)
+        .filter(
+            RequestMatch.request_id == request.id,
+            Donor.user_id == current_user.id,
+        )
+        .first()
+        is not None
+    )
+    return response
 
 
 @router.post("", response_model=RequestOut, status_code=201)
@@ -97,7 +119,7 @@ def create_request(
     create_request_matches(db, req)
     db.commit()
     db.refresh(req)
-    return req
+    return _request_response(req, current_user, db)
 
 
 @router.get("", response_model=List[RequestOut])
@@ -105,12 +127,13 @@ def list_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return (
+    requests = (
         db.query(BloodRequest)
         .filter(BloodRequest.created_by_user_id == current_user.id)
         .order_by(BloodRequest.created_at.desc())
         .all()
     )
+    return [_request_response(request, current_user, db) for request in requests]
 
 
 @router.get("/{request_id}", response_model=RequestOut)
@@ -122,7 +145,28 @@ def get_request(
     req = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    return req
+    return _request_response(req, current_user, db)
+
+
+@router.post("/{request_id}/cancel", response_model=RequestOut)
+def cancel_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    req = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req.created_by_user_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Not authorized to cancel this request")
+    if req.status in {RequestStatus.CANCELLED, RequestStatus.FULFILLED}:
+        raise HTTPException(status_code=409, detail="Request can no longer be cancelled")
+
+    req.status = RequestStatus.CANCELLED
+    req.cancelled_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(req)
+    return _request_response(req, current_user, db)
 
 
 @router.patch("/{request_id}", response_model=RequestOut)

@@ -62,6 +62,25 @@ def _record_response(
             status_code=409, detail=f"Already responded: {existing.status.value}"
         )
 
+    donor_match_notifications = (
+        db.query(Notification)
+        .filter(
+            Notification.recipient_user_id == donor.user_id,
+            Notification.donor_id == donor.id,
+            Notification.request_id == request.id,
+            Notification.title.in_(["Blood Request Match", "New Blood Request Match"]),
+            Notification.message.contains("Please respond"),
+        )
+        .all()
+    )
+    response_message = (
+        "You accepted this blood request."
+        if status is DonorResponseStatus.ACCEPTED
+        else "You declined this blood request."
+    )
+    for notification in donor_match_notifications:
+        notification.message = response_message
+
     response = DonorResponse(
         request_id=request_id,
         donor_id=donor.id,

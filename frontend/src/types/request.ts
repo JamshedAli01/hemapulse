@@ -26,6 +26,8 @@ export interface BloodRequest {
   // Some backends also return nested hospital/user info
   hospital?: { id: number; name: string; city?: string };
   requester?: { id: number; name: string };
+  is_requester?: boolean;
+  is_matched_donor?: boolean;
 }
 
 export interface VerifyRequest {

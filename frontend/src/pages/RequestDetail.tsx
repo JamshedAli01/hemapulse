@@ -203,7 +203,7 @@ export default function RequestDetail() {
                 </Alert>
               )}
 
-              {request.status !== 'CANCELLED' && request.status !== 'FULFILLED' && (
+              {request.is_requester && request.status !== 'CANCELLED' && request.status !== 'FULFILLED' && (
                 <div className="mt-6 pt-4 border-t border-border flex flex-col gap-2 sm:flex-row sm:items-center">
                   {cancelConfirm && (
                     <p className="flex items-center gap-1.5 text-sm text-yellow-700">
@@ -271,7 +271,7 @@ export default function RequestDetail() {
           </Card>
 
           {/* ── Donor Response (DONOR only) ── */}
-          {user?.role === UserRole.DONOR && user.id && (
+          {user?.role === UserRole.DONOR && user.id && request.is_matched_donor && (
             <Card>
               <CardContent className="pt-6">
                 <DonorResponsePanel
