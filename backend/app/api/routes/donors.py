@@ -53,6 +53,7 @@ class DonorOut(BaseModel):
 # ---------- Endpoints ----------
 
 
+@router.post("", response_model=DonorOut, status_code=201)
 @router.post("/profile", response_model=DonorOut, status_code=201)
 def create_donor_profile(
     payload: DonorCreate,
@@ -79,6 +80,7 @@ def create_donor_profile(
     return donor
 
 
+@router.get("", response_model=DonorOut)
 @router.get("/profile", response_model=DonorOut)
 def get_donor_profile(
     db: Session = Depends(get_db),
@@ -90,6 +92,7 @@ def get_donor_profile(
     return donor
 
 
+@router.put("", response_model=DonorOut)
 @router.put("/profile", response_model=DonorOut)
 def update_donor_profile(
     payload: DonorUpdate,

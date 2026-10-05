@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.session import get_db
 from app.core.dependencies import get_current_active_user
@@ -23,8 +23,8 @@ class RequestCreate(BaseModel):
     units_required: int
     required_before: datetime
     description: str
-    latitude: float
-    longitude: float
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
     urgency: RequestUrgency = RequestUrgency.MEDIUM
 
 
@@ -33,6 +33,14 @@ class RequestUpdate(BaseModel):
     urgency: Optional[RequestUrgency] = None
     description: Optional[str] = None
     units_required: Optional[int] = None
+
+
+class HospitalSummary(BaseModel):
+    id: int
+    name: str
+    city: str
+
+    model_config = {"from_attributes": True}
 
 
 class RequestOut(BaseModel):
@@ -51,6 +59,7 @@ class RequestOut(BaseModel):
     verified: bool
     created_at: datetime
     updated_at: datetime
+    hospital: HospitalSummary
 
     model_config = {"from_attributes": True}
 

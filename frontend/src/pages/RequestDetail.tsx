@@ -153,10 +153,17 @@ export default function RequestDetail() {
                   </span>
                 </InfoRow>
 
-                <InfoRow label="Location">
+                <InfoRow label="Target Location">
                   <span className="inline-flex items-center gap-1.5">
                     <MapPin className="h-4 w-4 text-muted-foreground" />
-                    {request.latitude.toFixed(5)}, {request.longitude.toFixed(5)}
+                    {request.hospital ? (
+                      <>
+                        <span>{request.hospital.name}</span>
+                        {request.hospital.city && <span className="text-muted-foreground">· {request.hospital.city}</span>}
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground italic">Location details unavailable</span>
+                    )}
                   </span>
                 </InfoRow>
 

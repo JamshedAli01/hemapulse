@@ -4,10 +4,18 @@ export interface HospitalRequest {
   city: string;
   latitude: number;
   longitude: number;
-  contact_phone?: string;
-  contact_email?: string;
+  phone?: string;
 }
 
 export interface Hospital extends HospitalRequest {
   id: number;
+}
+
+export interface LocationResult {
+  name: string;
+  address: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  hospital_id?: number;
 }
