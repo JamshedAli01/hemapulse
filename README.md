@@ -1,473 +1,263 @@
 # 🩸 HemaPulse
 
-### Smart Blood Emergency & Donor Matching Platform
+> 🚑 Smart Blood Emergency Coordination Platform
 
-HemaPulse is a web-based blood emergency management platform designed to help connect patients and hospitals with compatible blood donors quickly and efficiently.
+HemaPulse connects blood requesters, donors, hospitals, and administrators through a centralized platform designed to coordinate urgent blood needs, donor matching, notifications, and donation scheduling.
 
-The platform provides a centralized workflow for managing blood requests, donor availability, matching, notifications, hospitals, and emergency response coordination.
+## 🌐 Live Application
 
----
+**Try HemaPulse:** [https://hemapulse-app.netlify.app](https://hemapulse-app.netlify.app)
 
-## 🚨 The Problem
+- Frontend: Netlify
+- Backend API: Railway
 
-During blood emergencies, finding a suitable donor quickly can be difficult.
+## 💡 Overview
 
-Traditional processes often involve:
+Blood emergencies often require quickly finding compatible donors and coordinating communication between requesters, hospitals, and donors. HemaPulse provides a centralized workflow for:
 
-* Calling multiple people individually
-* Searching through disconnected donor lists
-* Difficulty identifying currently available donors
-* Delays in communicating urgent requests
-* Limited visibility into blood request status
+- Creating blood requests
+- Identifying compatible donors
+- Notifying matched donors
+- Accepting or declining requests
+- Coordinating donation scheduling
+- Tracking request status
+- Managing hospitals and donor profiles
 
-HemaPulse aims to streamline this process through a centralized digital platform.
+## ✨ Core Features
 
----
+### 🔐 Authentication and Roles
 
-## 💡 Solution
-
-HemaPulse brings donors, patients, and hospitals into one system.
-
-The platform is built around an emergency workflow:
-
-**Blood Request → Verification → Donor Matching → Donor Response → Fulfillment**
-
-The goal is to reduce unnecessary delays and make blood emergency coordination more organized.
-
----
-
-## ✨ Key Features
-
-### 👤 Donor Management
-
-* Donor registration and profiles
-* Blood group information
-* Donor availability management
-* Donor information retrieval
+- User registration and login
+- JWT-based authentication
+- Role-based access for Requesters, Donors, Hospitals, and Administrators
+- Ownership and role checks for protected operations
 
 ### 🆘 Blood Requests
 
-* Create blood emergency requests
-* Track request information
-* Request verification
-* Request cancellation
-* Request-to-donor matching workflow
+- Create requests with blood group, units, urgency, required-before time, and hospital association
+- View request details and status
+- Cancel requests when authorized
+- Track verification and fulfillment-related information
 
-### 🏥 Hospital Management
+### 🎯 Smart Matching
 
-* Hospital information management
-* Hospital listing
-* Hospital-specific information
+HemaPulse identifies compatible donors using the application's supported blood-group compatibility rules, donor availability, eligibility, and geographic distance. Matching creates donor match records and in-app notifications.
 
-### 🔎 Donor Matching
+### 🧑‍🤝‍🧑 Donor Workflow
 
-* Match blood requests with suitable donors
-* View matching results
-* Donor response workflow
+- Create and manage a donor profile
+- Maintain availability and eligibility information
+- View matched requests
+- Accept or decline matched requests
+- Preserve an optional decline reason
+- Schedule and confirm donations
 
 ### 🔔 Notifications
 
-* Emergency notification workflow
-* Notification management
-* Notification read status
+- Blood request match notifications
+- Donor accepted and donor declined notifications
+- Notification history
+- Read/unread notification state
 
-### 📊 Dashboard
+### 🏥 Hospital Management
 
-* Blood-group information
-* Emergency/request overview
-* Dashboard statistics
+- List hospitals
+- View hospital information
+- Associate hospitals with blood requests
+- Search for human-readable hospital and location information
 
-### 🤖 AI-Assisted Workflow
+### 🤖 AI-Assisted Support
 
-The project architecture includes an AI layer intended to assist with emergency request analysis and duplicate-request detection.
+The current AI endpoints provide rule-based request urgency analysis and duplicate-request detection. These are supporting workflow tools, not autonomous medical decision-making.
 
----
-
-## 🏗️ Architecture
+## 🔄 How HemaPulse Works
 
 ```text
-                    ┌─────────────────────┐
-                    │      User / Web     │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │   React + Vite UI   │
-                    │      Tailwind CSS   │
-                    └──────────┬──────────┘
-                               │ HTTPS / REST API
-                               ▼
-                    ┌─────────────────────┐
-                    │   FastAPI Backend   │
-                    │      Python         │
-                    └──────────┬──────────┘
-                               │
-                ┌──────────────┼──────────────┐
-                ▼              ▼              ▼
-        ┌────────────┐ ┌─────────────┐ ┌──────────────┐
-        │ PostgreSQL │ │ Matching /  │ │ Notification │
-        │  Database  │ │ API Logic   │ │   Services   │
-        └────────────┘ └─────────────┘ └──────────────┘
+Requester creates blood request
+        ↓
+Hospital/location is associated
+        ↓
+HemaPulse evaluates compatible eligible donors
+        ↓
+Matched donors receive notifications
+        ↓
+Donor accepts or declines
+        ↓
+Requester receives response notification
+        ↓
+Donation can be scheduled
 ```
 
-### Technology Stack
+## 👥 User Roles
 
-**Frontend**
+| Role | Purpose |
+| --- | --- |
+| Requester | Creates and manages blood requests |
+| Donor | Maintains donor availability and responds to matched requests |
+| Hospital | Provides hospital-related information and participates in request workflows |
+| Admin | Provides administrative oversight and protected management operations |
 
-* React
-* TypeScript
-* Vite
-* Tailwind CSS
+## 🩸 Blood Matching
 
-**Backend**
+Matching uses the application's supported blood-group compatibility rules and considers donor eligibility, availability, and geographic distance. HemaPulse is a coordination platform and does not replace professional medical judgment, blood-bank procedures, or hospital protocols.
 
-* Python
-* FastAPI
-* REST API
-* JWT-based authentication
+## 📍 Location Handling
 
-**Database**
+Users work with hospital names, cities, and addresses rather than manually entering latitude and longitude in the request workflow. Coordinates may be used internally for distance calculations and map-related features.
 
-* PostgreSQL
+Location handling is actively being refined to improve hospital-coordinate accuracy and geographic matching.
 
-**Deployment**
+## 🛠️ Technology Stack
 
-* Netlify — Frontend
-* Railway — Backend/API
-* PostgreSQL — Production database
+### 💻 Frontend
 
----
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
 
-## 📁 Project Structure
+### ⚙️ Backend
+
+- Python
+- FastAPI
+- SQLAlchemy
+- PostgreSQL
+- JWT authentication
+
+### ☁️ Deployment
+
+- Netlify
+- Railway
+- PostgreSQL on Railway
+
+## 📁 Repository Structure
 
 ```text
 the-warriors/
-│
 ├── frontend/
 │   ├── src/
-│   ├── public/
 │   ├── package.json
 │   └── ...
-│
 ├── backend/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── routers/
+│   │   ├── api/
 │   │   ├── models/
 │   │   ├── schemas/
-│   │   └── db/
+│   │   └── services/
 │   ├── tests/
-│   ├── requirements.txt
-│   └── ...
-│
+│   ├── schema.sql
+│   ├── seed.sql
+│   └── requirements.txt
 ├── smart_blood_emergency_api.yaml
+├── LICENSE
 └── README.md
 ```
 
----
+## 🚀 Local Development
 
-# 🚀 Getting Started
+The frontend and backend run separately during local development.
 
-## Prerequisites
+### 💻 Frontend
 
-Make sure you have installed:
-
-* Node.js
-* npm
-* Python 3.10+
-* PostgreSQL
-* Git
-
----
-
-# 🔧 Backend Setup
-
-Navigate to the backend:
-
-```bash
-cd backend
-```
-
-Create a virtual environment:
-
-### Windows
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-### Linux / macOS
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 🗄️ Database Configuration
-
-HemaPulse uses **PostgreSQL**.
-
-Configure the database connection through the backend environment configuration.
-
-Example:
-
-```env
-DATABASE_URL=postgresql://username:password@localhost:5432/hemapulse
-```
-
-Do not commit real database credentials or other secrets to GitHub.
-
----
-
-## ▶️ Run the Backend
-
-From the `backend` directory:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-The API will normally be available at:
-
-```text
-http://127.0.0.1:8000
-```
-
-FastAPI documentation:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Health check:
-
-```text
-http://127.0.0.1:8000/health
-```
-
----
-
-# 💻 Frontend Setup
-
-Navigate to the frontend:
-
-```bash
+```powershell
 cd frontend
+npm.cmd install
+npm.cmd run dev
 ```
 
-Install dependencies:
+### ⚙️ Backend
 
-```bash
-npm install
+```powershell
+cd backend
+.\venv2\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-Create a `.env` file if required:
+The backend normally serves locally at `http://127.0.0.1:8000`. FastAPI documentation is available at `/docs` while the backend is running.
 
-```env
-VITE_API_URL=http://127.0.0.1:8000
-```
+## 🔑 Environment Variables
 
-Start the development server:
-
-```bash
-npm run dev
-```
-
-Vite will provide the local frontend URL in the terminal.
-
----
-
-# 🔐 Environment Variables
-
-Do not store production secrets in the repository.
-
-Typical environment configuration includes:
+Use local environment files and never commit real credentials or tokens.
 
 ### Backend
 
 ```env
-DATABASE_URL=your_postgresql_connection_string
-SECRET_KEY=your_secret_key
+DATABASE_URL=your_database_url
+JWT_SECRET=your_secret_key
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+ENVIRONMENT=development
 ```
 
 ### Frontend
 
 ```env
-VITE_API_URL=http://127.0.0.1:8000
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-For production, `VITE_API_URL` should point to the deployed HTTPS backend.
+## 📡 API Contract
 
-Example:
+The repository includes [smart_blood_emergency_api.yaml](./smart_blood_emergency_api.yaml), an OpenAPI-style API contract describing backend endpoints and data models. The contract is a reference and does not necessarily mean every documented endpoint is currently implemented.
 
-```env
-VITE_API_URL=https://your-backend-domain.example
+## 🧪 Testing and Verification
+
+Useful checks include:
+
+```powershell
+cd frontend
+npm.cmd run build
 ```
 
----
+```powershell
+cd backend
+python -m compileall -q app
+pytest -q
+```
 
-# ☁️ Deployment
+The backend test suite has previously passed 26 tests. Additional focused verification is performed during active development; database-backed tests may require a configured PostgreSQL environment.
 
-The intended production architecture is:
+## ☁️ Deployment
 
 ```text
-                    Internet
-                       │
-                       ▼
-              ┌────────────────┐
-              │    Netlify     │
-              │ React Frontend │
-              └───────┬────────┘
-                      │ HTTPS
-                      ▼
-              ┌────────────────┐
-              │    Railway     │
-              │ FastAPI Backend│
-              └───────┬────────┘
-                      │
-                      ▼
-              ┌────────────────┐
-              │   PostgreSQL   │
-              │    Database    │
-              └────────────────┘
+Frontend → Netlify
+Backend  → Railway
+Database → PostgreSQL on Railway
 ```
 
-The frontend communicates with the FastAPI backend through HTTPS REST API requests.
+Live application: [https://hemapulse-app.netlify.app](https://hemapulse-app.netlify.app)
 
----
+## 🛡️ Security and Authorization
 
-# 📡 API
+Protected operations use authenticated users together with role and ownership checks. Examples include:
 
-The project's API contract is documented in:
+- Request cancellation restricted to authorized request creators or supported administrators
+- Matching operations restricted to authorized requester/admin workflows
+- Donor responses restricted to donors matched to the request
+- Backend validation for request, hospital, and location data
 
-```text
-smart_blood_emergency_api.yaml
-```
+## 📌 Current Status
 
-FastAPI also provides interactive API documentation when the backend is running:
+HemaPulse is an actively developed prototype focused on demonstrating an end-to-end blood emergency coordination workflow. Core request, matching, notification, donor-response, hospital, and donation workflows are implemented, while location/geocoding accuracy and some UX areas remain under active development.
 
-```text
-/docs
-```
+## 🗺️ Roadmap
 
----
+Potential future work includes:
 
-# 🔄 Core Workflow
+- More robust hospital and location geocoding
+- Expanded notification channels
+- Advanced analytics
+- More comprehensive hospital workflows
+- Production-grade monitoring
+- Additional accessibility and UX improvements
 
-```text
-1. User creates a blood request
-             │
-             ▼
-2. Request is verified
-             │
-             ▼
-3. Matching process identifies compatible donors
-             │
-             ▼
-4. Donors receive/respond to the request
-             │
-             ▼
-5. Donation is coordinated
-             │
-             ▼
-6. Emergency request is fulfilled
-```
+## ⚠️ Safety Disclaimer
 
----
+HemaPulse is a software coordination platform for blood-emergency workflows. It does not replace doctors, hospitals, blood banks, laboratory testing, compatibility verification, or professional medical judgment.
 
-# 🛡️ Security Considerations
+## 📄 License
 
-HemaPulse is designed with common web-application security practices in mind, including:
+HemaPulse is licensed under the [MIT License](./LICENSE).
 
-* Authentication
-* JWT-based authorization
-* Environment-based secrets
-* PostgreSQL database
-* CORS configuration
-* API-level validation
+## 🤝 Contributing
 
-Production deployments should use secure environment variables and HTTPS.
-
----
-
-# 🧪 Testing
-
-Backend tests are located in:
-
-```text
-backend/tests/
-```
-
-Run the test suite from the backend environment with:
-
-```bash
-pytest
-```
-
-Some tests may require a running PostgreSQL database and appropriate seed/configuration data.
-
----
-
-# 🗺️ Future Improvements
-
-Potential future improvements include:
-
-* Real-time donor notifications
-* SMS/WhatsApp emergency alerts
-* More advanced donor ranking and matching
-* Hospital verification workflows
-* Location-based donor discovery
-* Real-time request tracking
-* Expanded AI-assisted emergency analysis
-* Analytics and reporting
-* Mobile application
-* Improved production monitoring
-
----
-
-# 🤝 Contributing
-
-Contributions, suggestions, and improvements are welcome.
-
-1. Fork the repository
-2. Create a feature branch
-
-```bash
-git checkout -b feature/your-feature
-```
-
-3. Make your changes
-4. Commit your changes
-
-```bash
-git commit -m "Add your feature"
-```
-
-5. Push the branch
-
-```bash
-git push origin feature/your-feature
-```
-
-6. Open a Pull Request
-
----
-
-# 📄 License
-
-This project is currently provided for educational, hackathon, and development purposes.
-
----
-
-## ❤️ HemaPulse
-
-**Connecting blood donors with people who need them — faster.**
+Contributions and improvements are welcome. Please open an issue or pull request with a clear description of the proposed change and its verification steps.

@@ -260,15 +260,17 @@ export default function RequestDetail() {
             </Card>
           )}
 
-          {/* ── Smart Matching ── */}
-          <Card>
-            <CardContent className="pt-6">
-              <SmartMatchingPanel
-                requestId={request.id}
-                requestStatus={request.status}
-              />
-            </CardContent>
-          </Card>
+          {/* ── Smart Matching (requester only) ── */}
+          {request.is_requester === true && (
+            <Card>
+              <CardContent className="pt-6">
+                <SmartMatchingPanel
+                  requestId={request.id}
+                  requestStatus={request.status}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Donor Response (DONOR only) ── */}
           {user?.role === UserRole.DONOR && user.id && request.is_matched_donor && (
