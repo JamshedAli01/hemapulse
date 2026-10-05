@@ -9,6 +9,9 @@ from app.core.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.notification import Notification
 from app.models.enums import NotificationStatus
+from app.models.blood_request import BloodRequest
+from app.models.donor import Donor
+from app.schemas.notification import SendNotificationRequest
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 
@@ -35,6 +38,42 @@ def list_notifications(
         .order_by(Notification.created_at.desc())
         .all()
     )
+
+
+@router.post("/{request_id}/send")
+def send_notifications(
+    request_id: int,
+    payload: SendNotificationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    request = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if request.created_by_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to send notifications")
+
+    donors = db.query(Donor).filter(Donor.id.in_(payload.donor_ids)).all()
+    donors_by_id = {donor.id: donor for donor in donors}
+    missing = sorted(set(payload.donor_ids) - set(donors_by_id))
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Donor not found: {missing[0]}")
+
+    for donor in donors:
+        db.add(
+            Notification(
+                recipient_user_id=donor.user_id,
+                donor_id=donor.id,
+                request_id=request.id,
+                channel=payload.channel,
+                status=NotificationStatus.SENT,
+                title="Blood Request Match",
+                message="You are matched to a blood request. Please respond.",
+                sent_at=datetime.now(timezone.utc),
+            )
+        )
+    db.commit()
+    return {"sent_count": len(donors)}
 
 
 @router.patch("/{notification_id}/read")

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Link, NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { 
@@ -14,6 +14,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { notificationService } from '../services/notificationService';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -25,8 +26,27 @@ const navigation = [
 
 export default function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState<number | null>(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user) return;
+
+    notificationService
+      .listNotifications()
+      .then((notifications) => {
+        setUnreadCount(
+          notifications.filter(
+            (notification) =>
+              notification.is_read === false || notification.read === false
+          ).length
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to load notification count', error);
+      });
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -57,7 +77,14 @@ export default function AppLayout() {
                       : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
                   )}
                 >
-                  <item.icon className="h-4 w-4 mr-2" />
+                  <span className="relative mr-2 inline-flex">
+                    <item.icon className="h-4 w-4" />
+                    {item.name === 'Notifications' && unreadCount !== null && unreadCount > 0 && (
+                      <span className="pointer-events-none absolute -right-2 -top-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </span>
                   {item.name}
                 </NavLink>
               ))}
@@ -132,7 +159,14 @@ export default function AppLayout() {
                   )}
                 >
                   <div className="flex items-center">
-                    <item.icon className="h-5 w-5 mr-3" />
+                    <span className="relative mr-3 inline-flex">
+                      <item.icon className="h-5 w-5" />
+                      {item.name === 'Notifications' && unreadCount !== null && unreadCount > 0 && (
+                        <span className="pointer-events-none absolute -right-2 -top-2 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </span>
                     {item.name}
                   </div>
                 </NavLink>

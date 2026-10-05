@@ -4,7 +4,7 @@ from app.db.session import get_db
 from app.core.dependencies import get_current_active_user
 from app.schemas.ai import AnalyzeRequest, CheckDuplicateRequest
 from app.models.blood_request import BloodRequest
-from app.models.enums import RequestUrgency
+from app.models.enums import RequestStatus, RequestUrgency
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
 
@@ -55,7 +55,9 @@ def check_duplicate(
             BloodRequest.id != req.id,
             BloodRequest.hospital_id == req.hospital_id,
             BloodRequest.blood_group == req.blood_group,
-            BloodRequest.status.in_(["PENDING", "VERIFIED", "MATCHING"]),
+            BloodRequest.status.in_(
+                [RequestStatus.PENDING, RequestStatus.VERIFIED, RequestStatus.MATCHING]
+            ),
         )
         .all()
     )
@@ -74,4 +76,3 @@ def check_duplicate(
         "confidence_score": 0.0,
         "reasoning": "No matching active requests found.",
     }
-

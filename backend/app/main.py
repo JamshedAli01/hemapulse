@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.api.routes import auth, donors, requests, matching, notifications, dashboard, hospitals, ai, donations
+from app.api.routes import auth, donors, requests, matching, notifications, dashboard, hospitals, ai, donations, responses
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ app.include_router(dashboard.router)
 app.include_router(hospitals.router)
 app.include_router(ai.router)
 app.include_router(donations.router)
+app.include_router(responses.router)
 
 
 # ---------------------------------------------------------------------------

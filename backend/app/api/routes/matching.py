@@ -11,13 +11,17 @@ from app.models.donor import Donor
 from app.models.request_match import RequestMatch
 from app.models.notification import Notification
 from app.models.donor_response import DonorResponse
+from app.models.hospital import Hospital
 from app.models.enums import (
     RequestStatus,
     DonorResponseStatus,
     NotificationChannel,
     NotificationStatus,
+    UserRole,
 )
+from app.schemas.matching import EscalateRequest
 from app.services.matching import create_request_matches
+from app.services.distance import haversine_km
 
 router = APIRouter(prefix="/api", tags=["Matching"])
 
@@ -38,6 +42,63 @@ class MatchOut(BaseModel):
 class MatchListOut(BaseModel):
     request_id: int
     matches: List[MatchOut]
+
+
+def _get_request(request_id: int, db: Session) -> BloodRequest:
+    request = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return request
+
+
+def _can_manage_request(request: BloodRequest, current_user: User) -> bool:
+    return (
+        request.created_by_user_id == current_user.id
+        or current_user.role == UserRole.ADMIN
+    )
+
+
+def _get_or_create_matches(request: BloodRequest, db: Session) -> List[RequestMatch]:
+    existing = (
+        db.query(RequestMatch).filter(RequestMatch.request_id == request.id).all()
+    )
+    if not existing:
+        create_request_matches(db, request)
+        db.commit()
+        existing = (
+            db.query(RequestMatch).filter(RequestMatch.request_id == request.id).all()
+        )
+    return existing
+
+
+def _match_list(request: BloodRequest, db: Session) -> MatchListOut:
+    result = []
+    for match in _get_or_create_matches(request, db):
+        response = (
+            db.query(DonorResponse)
+            .filter(
+                DonorResponse.request_id == request.id,
+                DonorResponse.donor_id == match.donor_id,
+            )
+            .first()
+        )
+        status_str = response.status.value if response else "PENDING"
+        result.append(
+            MatchOut(
+                match_id=match.id,
+                donor_id=match.donor_id,
+                blood_group=match.donor.blood_group.value,
+                distance_km=(
+                    float(match.distance_km)
+                    if match.distance_km is not None
+                    else None
+                ),
+                is_available=match.donor.is_available,
+                status=status_str,
+            )
+        )
+    result.sort(key=lambda item: item.distance_km or float("inf"))
+    return MatchListOut(request_id=request.id, matches=result)
 
 
 # ---------- Helper ----------
@@ -72,53 +133,117 @@ def get_matches(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    req = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
-    if not req:
-        raise HTTPException(status_code=404, detail="Request not found")
-    if req.created_by_user_id != current_user.id:
+    req = _get_request(request_id, db)
+    if not _can_manage_request(req, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to access these matches")
+    return _match_list(req, db)
 
-    # Find or generate matches
-    existing = (
-        db.query(RequestMatch).filter(RequestMatch.request_id == request_id).all()
-    )
 
-    if not existing:
-        create_request_matches(db, req)
-        db.commit()
-        existing = (
-            db.query(RequestMatch).filter(RequestMatch.request_id == request_id).all()
+@router.post("/matching/{request_id}/run", response_model=MatchListOut)
+def run_matching(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    request = _get_request(request_id, db)
+    if not _can_manage_request(request, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to run matching")
+    return _match_list(request, db)
+
+
+@router.get("/matching/{request_id}", response_model=MatchListOut)
+def get_matching(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    request = _get_request(request_id, db)
+    if not _can_manage_request(request, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to access matching")
+    return _match_list(request, db)
+
+
+@router.post("/matching/{request_id}/escalate")
+def escalate_matching(
+    request_id: int,
+    payload: EscalateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    request = _get_request(request_id, db)
+    if not _can_manage_request(request, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to escalate matching")
+    matches_before = len(_get_or_create_matches(request, db))
+    matches_after = len(_get_or_create_matches(request, db))
+    return {
+        "matched_count": matches_after,
+        "notified_count": max(0, matches_after - matches_before),
+        "next_radius_km": payload.next_radius_km,
+    }
+
+
+@router.post("/matching/{request_id}/stop")
+def stop_matching(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    request = _get_request(request_id, db)
+    if not _can_manage_request(request, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to stop matching")
+    return {"detail": "Matching stopped", "request_id": request.id}
+
+
+@router.get("/matching/{request_id}/map")
+def get_map_data(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    request = _get_request(request_id, db)
+    if not _can_manage_request(request, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to access map data")
+
+    donors = []
+    for match in _get_or_create_matches(request, db):
+        donor = match.donor
+        donors.append(
+            {
+                "id": donor.id,
+                "latitude": donor.latitude,
+                "longitude": donor.longitude,
+                "distance_km": float(match.distance_km) if match.distance_km is not None else haversine_km(
+                    request.latitude, request.longitude, donor.latitude, donor.longitude
+                ),
+                "blood_group": donor.blood_group.value,
+            }
         )
 
-    # Build response with status from donor_responses
-    result = []
-    for m in existing:
-        response = (
-            db.query(DonorResponse)
-            .filter(
-                DonorResponse.request_id == request_id,
-                DonorResponse.donor_id == m.donor_id,
-            )
-            .first()
-        )
-        status_str = "PENDING"
-        if response:
-            status_str = response.status.value
-
-        result.append(
-            MatchOut(
-                match_id=m.id,
-                donor_id=m.donor_id,
-                blood_group=m.donor.blood_group.value,
-                distance_km=float(m.distance_km) if m.distance_km is not None else None,
-                is_available=m.donor.is_available,
-                status=status_str,
-            )
+    hospitals = []
+    for hospital in db.query(Hospital).all():
+        hospitals.append(
+            {
+                "id": hospital.id,
+                "name": hospital.name,
+                "latitude": hospital.latitude,
+                "longitude": hospital.longitude,
+                "distance_km": haversine_km(
+                    request.latitude,
+                    request.longitude,
+                    hospital.latitude,
+                    hospital.longitude,
+                ),
+            }
         )
 
-    # Sort by distance
-    result.sort(key=lambda x: x.distance_km or float("inf"))
-    return MatchListOut(request_id=request_id, matches=result)
+    return {
+        "request_location": {
+            "latitude": request.latitude,
+            "longitude": request.longitude,
+        },
+        "donors": donors,
+        "hospitals": hospitals,
+    }
 
 
 @router.post("/matches/{match_id}/accept")

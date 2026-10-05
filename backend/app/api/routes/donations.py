@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db
 from app.core.dependencies import get_current_active_user
 from app.schemas.donation import DonationCreate, ConfirmDonation, ConfirmQR, DonationResponse
 from app.models.donation import Donation
 from app.models.donation_qr_token import DonationQRToken
+from app.models.blood_request import BloodRequest
+from app.models.donor import Donor
 from app.models.enums import DonationStatus, ConfirmationMethod
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -18,15 +21,26 @@ def create_donation(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
 ):
+    request = db.query(BloodRequest).filter(BloodRequest.id == payload.request_id).first()
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    donor = db.query(Donor).filter(Donor.user_id == current_user.id).first()
+    if not donor or payload.donor_id not in {donor.id, donor.user_id}:
+        raise HTTPException(status_code=403, detail="You are not the specified donor")
+
     donation = Donation(
         request_id=payload.request_id,
-        donor_id=payload.donor_id,
+        donor_id=donor.id,
         units=payload.units,
         status=DonationStatus.SCHEDULED,
         scheduled_at=datetime.now(timezone.utc),
     )
     db.add(donation)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Donation could not be scheduled")
     db.refresh(donation)
     return donation
 
@@ -112,4 +126,3 @@ def confirm_qr(
 
     db.commit()
     return {"message": "QR donation confirmed"}
-
