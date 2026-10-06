@@ -1,5 +1,12 @@
 import { apiClient } from './apiClient';
-import { DonorProfile, DonorRequest, DonorListParams, UpdateDonorAvailability } from '../types/donor';
+import {
+  DonorProfile,
+  DonorRequest,
+  DonorListParams,
+  DonorProfileUpdate,
+  UpdateDonorAvailability,
+} from '../types/donor';
+import { DonorMatch } from '../types/donor';
 
 export const donorService = {
   listDonors: async (params?: DonorListParams): Promise<DonorProfile[]> => {
@@ -19,6 +26,16 @@ export const donorService = {
 
   updateAvailability: async (data: UpdateDonorAvailability): Promise<DonorProfile> => {
     const response = await apiClient.put<DonorProfile>('/api/donors/profile', data);
+    return response.data;
+  },
+
+  updateProfile: async (data: DonorProfileUpdate): Promise<DonorProfile> => {
+    const response = await apiClient.put<DonorProfile>('/api/donors/profile', data);
+    return response.data;
+  },
+
+  listMatches: async (): Promise<DonorMatch[]> => {
+    const response = await apiClient.get<DonorMatch[]>('/api/donors/matches');
     return response.data;
   },
 };

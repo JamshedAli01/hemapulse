@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone
 
 from app.core.dependencies import get_current_active_user
 from app.db.session import get_db
@@ -36,7 +38,20 @@ def _record_response(
     reason: str | None,
     db: Session,
 ):
-    request = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
+    # Lock the donor first, then the request.  Every acceptance path uses this
+    # order, preventing two concurrent requests from reserving one donor.
+    donor = (
+        db.query(Donor)
+        .filter(Donor.id == donor.id)
+        .with_for_update()
+        .one()
+    )
+    request = (
+        db.query(BloodRequest)
+        .filter(BloodRequest.id == request_id)
+        .with_for_update()
+        .first()
+    )
     if not request:
         raise HTTPException(status_code=404, detail="Request not found")
     match = (
@@ -49,6 +64,20 @@ def _record_response(
     )
     if not match:
         raise HTTPException(status_code=404, detail="Donor is not matched to this request")
+    now = datetime.now(timezone.utc)
+    if request.status in {
+        RequestStatus.CANCELLED,
+        RequestStatus.FULFILLED,
+        RequestStatus.EXPIRED,
+    } or request.required_before <= now:
+        if request.required_before <= now and request.status not in {
+            RequestStatus.CANCELLED,
+            RequestStatus.FULFILLED,
+            RequestStatus.EXPIRED,
+        }:
+            request.status = RequestStatus.EXPIRED
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Request is no longer active")
     existing = (
         db.query(DonorResponse)
         .filter(
@@ -80,6 +109,51 @@ def _record_response(
     )
     for notification in donor_match_notifications:
         notification.message = response_message
+
+    if status is DonorResponseStatus.ACCEPTED:
+        active_other = (
+            db.query(DonorResponse)
+            .join(BloodRequest, BloodRequest.id == DonorResponse.request_id)
+            .filter(
+                DonorResponse.donor_id == donor.id,
+                DonorResponse.status == DonorResponseStatus.ACCEPTED,
+                DonorResponse.request_id != request.id,
+                BloodRequest.status.notin_(
+                    [RequestStatus.CANCELLED, RequestStatus.FULFILLED, RequestStatus.EXPIRED]
+                ),
+                BloodRequest.required_before > now,
+            )
+            .first()
+        )
+        if active_other:
+            raise HTTPException(
+                status_code=409,
+                detail="Donor already has an active accepted request",
+            )
+        competing_notifications = (
+            db.query(Notification)
+            .join(BloodRequest, BloodRequest.id == Notification.request_id)
+            .filter(
+                Notification.donor_id == donor.id,
+                Notification.recipient_user_id == donor.user_id,
+                Notification.request_id != request.id,
+                Notification.message.contains("Please respond"),
+                BloodRequest.status.notin_(
+                    [
+                        RequestStatus.CANCELLED,
+                        RequestStatus.FULFILLED,
+                        RequestStatus.EXPIRED,
+                    ]
+                ),
+                BloodRequest.required_before > now,
+            )
+            .all()
+        )
+        for notification in competing_notifications:
+            notification.message = (
+                "You are no longer available for this request because you "
+                "committed to another active blood request."
+            )
 
     response = DonorResponse(
         request_id=request_id,
@@ -114,7 +188,11 @@ def _record_response(
                 message="A matched donor has declined your blood request.",
             )
         )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Donor has already responded")
     db.refresh(response)
     return response
 

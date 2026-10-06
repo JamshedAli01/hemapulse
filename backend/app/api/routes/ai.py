@@ -4,7 +4,7 @@ from app.db.session import get_db
 from app.core.dependencies import get_current_active_user
 from app.schemas.ai import AnalyzeRequest, CheckDuplicateRequest
 from app.models.blood_request import BloodRequest
-from app.models.enums import RequestStatus, RequestUrgency
+from app.models.enums import RequestStatus, RequestUrgency, UserRole
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
 
@@ -18,6 +18,11 @@ def analyze_request(
     req = db.query(BloodRequest).filter(BloodRequest.id == payload.request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    if req.created_by_user_id != current_user.id and current_user.role not in {
+        UserRole.ADMIN,
+        UserRole.HOSPITAL,
+    }:
+        raise HTTPException(status_code=403, detail="Not authorized to analyze this request")
 
     desc_lower = payload.description.lower()
     if any(kw in desc_lower for kw in ["critical", "life-threatening", "emergency", "immediate"]):
@@ -48,6 +53,11 @@ def check_duplicate(
     req = db.query(BloodRequest).filter(BloodRequest.id == payload.request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    if req.created_by_user_id != current_user.id and current_user.role not in {
+        UserRole.ADMIN,
+        UserRole.HOSPITAL,
+    }:
+        raise HTTPException(status_code=403, detail="Not authorized to inspect this request")
 
     duplicates = (
         db.query(BloodRequest)

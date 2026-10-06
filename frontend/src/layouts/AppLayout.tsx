@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Outlet, Link, NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { 
@@ -30,23 +30,33 @@ export default function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!user) return;
-
+  const refreshUnreadCount = useCallback(() => {
+    if (!user) {
+      setUnreadCount(null);
+      return;
+    }
     notificationService
       .listNotifications()
       .then((notifications) => {
         setUnreadCount(
-          notifications.filter(
-            (notification) =>
-              notification.is_read === false || notification.read === false
-          ).length
+          notifications.filter((notification) => notification.status !== 'READ').length
         );
       })
       .catch((error) => {
         console.error('Failed to load notification count', error);
       });
   }, [user]);
+
+  useEffect(() => {
+    refreshUnreadCount();
+  }, [refreshUnreadCount]);
+
+  useEffect(() => {
+    window.addEventListener('hemapulse:notifications-updated', refreshUnreadCount);
+    return () => {
+      window.removeEventListener('hemapulse:notifications-updated', refreshUnreadCount);
+    };
+  }, [refreshUnreadCount]);
 
   const handleLogout = () => {
     logout();

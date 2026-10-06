@@ -11,8 +11,13 @@ from app.models.blood_request import BloodRequest
 from app.models.hospital import Hospital
 from app.models.donor import Donor
 from app.models.request_match import RequestMatch
+from app.models.donor_response import DonorResponse
+from app.models.donation import Donation
+from app.models.enums import DonationStatus, DonorResponseStatus
 from app.models.enums import BloodGroup, RequestStatus, RequestUrgency, UserRole
 from app.services.matching import create_request_matches
+from app.services.location import is_valid_pakistan_location
+from app.services.request_lifecycle import effective_request_status
 
 router = APIRouter(prefix="/api/requests", tags=["Blood Requests"])
 
@@ -25,8 +30,8 @@ class RequestCreate(BaseModel):
     units_required: int
     required_before: datetime
     description: str
-    latitude: float = Field(..., ge=-90.0, le=90.0)
-    longitude: float = Field(..., ge=-180.0, le=180.0)
+    latitude: float = Field(..., ge=23.5, le=37.5)
+    longitude: float = Field(..., ge=60.5, le=77.5)
     urgency: RequestUrgency = RequestUrgency.MEDIUM
 
 
@@ -41,6 +46,16 @@ class HospitalSummary(BaseModel):
     id: int
     name: str
     city: str
+
+    model_config = {"from_attributes": True}
+
+
+class CurrentUserDonation(BaseModel):
+    id: int
+    units: int
+    status: DonationStatus
+    scheduled_at: datetime
+    confirmed_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
 
@@ -64,6 +79,11 @@ class RequestOut(BaseModel):
     hospital: HospitalSummary
     is_requester: bool = False
     is_matched_donor: bool = False
+    current_user_response_status: Optional[DonorResponseStatus] = None
+    committed_donor_count: int = 0
+    units_scheduled: int = 0
+    units_remaining_capacity: int = 0
+    current_user_donation: Optional[CurrentUserDonation] = None
 
     model_config = {"from_attributes": True}
 
@@ -75,6 +95,9 @@ def _request_response(
     request: BloodRequest, current_user: User, db: Session
 ) -> dict:
     response = RequestOut.model_validate(request).model_dump()
+    response["status"] = effective_request_status(
+        request.status, request.required_before
+    ).value
     response["is_requester"] = request.created_by_user_id == current_user.id
     response["is_matched_donor"] = (
         db.query(RequestMatch)
@@ -86,6 +109,51 @@ def _request_response(
         .first()
         is not None
     )
+    response["committed_donor_count"] = (
+        db.query(DonorResponse)
+        .filter(
+            DonorResponse.request_id == request.id,
+            DonorResponse.status == DonorResponseStatus.ACCEPTED,
+        )
+        .count()
+    )
+    scheduled_units = (
+        db.query(Donation.units)
+        .filter(
+            Donation.request_id == request.id,
+            Donation.status == DonationStatus.SCHEDULED,
+        )
+        .all()
+    )
+    response["units_scheduled"] = sum(units for (units,) in scheduled_units)
+    response["units_remaining_capacity"] = max(
+        request.units_required - request.units_fulfilled - response["units_scheduled"],
+        0,
+    )
+
+    donor = db.query(Donor).filter(Donor.user_id == current_user.id).first()
+    if donor:
+        donor_response = (
+            db.query(DonorResponse)
+            .filter(
+                DonorResponse.request_id == request.id,
+                DonorResponse.donor_id == donor.id,
+            )
+            .first()
+        )
+        response["current_user_response_status"] = (
+            donor_response.status if donor_response else None
+        )
+        response["current_user_donation"] = (
+            db.query(Donation)
+            .filter(
+                Donation.request_id == request.id,
+                Donation.donor_id == donor.id,
+                Donation.status != DonationStatus.CANCELLED,
+            )
+            .order_by(Donation.created_at.desc())
+            .first()
+        )
     return response
 
 
@@ -101,6 +169,13 @@ def create_request(
     hospital = db.query(Hospital).filter(Hospital.id == payload.hospital_id).first()
     if not hospital:
         raise HTTPException(status_code=404, detail="Hospital not found")
+    if not is_valid_pakistan_location(payload.latitude, payload.longitude):
+        raise HTTPException(status_code=422, detail="Request coordinates must be within Pakistan")
+    if not is_valid_pakistan_location(hospital.latitude, hospital.longitude):
+        raise HTTPException(
+            status_code=422,
+            detail="The selected hospital has invalid coordinates; choose another hospital",
+        )
 
     req = BloodRequest(
         hospital_id=payload.hospital_id,
@@ -164,6 +239,11 @@ def cancel_request(
 
     req.status = RequestStatus.CANCELLED
     req.cancelled_at = datetime.now(timezone.utc)
+    for notification in req.notifications:
+        if notification.message and "Please respond" in notification.message:
+            notification.message = (
+                "This request was cancelled and no longer needs a response."
+            )
     db.commit()
     db.refresh(req)
     return _request_response(req, current_user, db)
@@ -179,12 +259,18 @@ def update_request(
     req = db.query(BloodRequest).filter(BloodRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    if req.created_by_user_id != current_user.id:
+    if req.created_by_user_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=403, detail="Not authorized to modify this request"
         )
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if "status" in updates and updates["status"] not in {req.status}:
+        raise HTTPException(
+            status_code=400,
+            detail="Use the dedicated verification or cancellation action for status changes",
+        )
+    for field, value in updates.items():
         setattr(req, field, value)
 
     db.commit()

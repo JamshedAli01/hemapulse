@@ -36,6 +36,34 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
+function RequestLifecycleTimeline({ status, committed, scheduled, fulfilled }: {
+  status: string;
+  committed: number;
+  scheduled: number;
+  fulfilled: number;
+}) {
+  const expired = status === 'EXPIRED';
+  const stages = [
+    ['Request created', true],
+    ['Matching', ['PENDING', 'VERIFIED', 'MATCHING', 'FULFILLED', 'EXPIRED'].includes(status)],
+    ['Donor commitment', committed > 0],
+    ['Expired', expired],
+    ['Donation scheduled', scheduled > 0 && !expired],
+    ['Donation confirmed', fulfilled > 0 && !expired],
+    ['Fulfilled', status === 'FULFILLED'],
+  ] as const;
+  return (
+    <ol className="grid gap-2 sm:grid-cols-7" aria-label="Request lifecycle">
+      {stages.map(([label, complete], index) => (
+        <li key={label} className="flex items-center gap-2 text-xs">
+          <span className={`h-2.5 w-2.5 rounded-full ${complete ? (expired && label === 'Expired' ? 'bg-destructive' : 'bg-primary') : 'bg-muted'}`} aria-hidden="true" />
+          <span className={complete ? 'font-medium' : 'text-muted-foreground'}>{complete ? '✓' : '○'} {index + 1}. {label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function RequestDetail() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -49,6 +77,7 @@ export default function RequestDetail() {
   const [cancelConfirm, setCancelConfirm] = useState(false);
 
   const justCreated = (location.state as { created?: boolean } | null)?.created;
+  const canManageRequest = user?.role === UserRole.ADMIN || request?.is_requester === true;
 
   const handleCancel = async () => {
     if (!cancelConfirm) {
@@ -134,6 +163,29 @@ export default function RequestDetail() {
             </CardHeader>
 
             <CardContent>
+              <div className="mb-5 rounded-lg bg-muted/30 p-4 space-y-3">
+                {request.status === 'EXPIRED' && (
+                  <Alert variant="warning">
+                    <AlertTitle>Request expired</AlertTitle>
+                    <AlertDescription>
+                      This request has expired and is no longer accepting donor responses or donations.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <span><strong>{request.units_required}</strong> units required</span>
+                  <span><strong>{request.committed_donor_count}</strong> donor{request.committed_donor_count !== 1 ? 's' : ''} committed</span>
+                  <span><strong>{request.units_scheduled}</strong> units scheduled</span>
+                  <span><strong>{request.units_fulfilled ?? 0}</strong> units fulfilled</span>
+                  <span><strong>{request.units_remaining_capacity}</strong> units remaining capacity</span>
+                </div>
+                <RequestLifecycleTimeline
+                  status={request.status ?? ''}
+                  committed={request.committed_donor_count}
+                  scheduled={request.units_scheduled}
+                  fulfilled={request.units_fulfilled ?? 0}
+                />
+              </div>
               <dl className="space-y-0">
                 <InfoRow label="Description">
                   {request.description || <span className="text-muted-foreground italic">None</span>}
@@ -238,17 +290,19 @@ export default function RequestDetail() {
           </Card>
 
           {/* ── AI Analysis (Optional/All) ── */}
-          <Card>
-            <CardContent className="pt-6">
-              <AiAnalysisPanel 
-                requestId={request.id} 
-                description={request.description} 
-              />
-            </CardContent>
-          </Card>
+          {canManageRequest && (
+            <Card>
+              <CardContent className="pt-6">
+                <AiAnalysisPanel
+                  requestId={request.id}
+                  description={request.description}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Location & Map ── */}
-          {request.latitude != null && request.longitude != null && (
+          {canManageRequest && request.latitude != null && request.longitude != null && (
             <Card>
               <CardContent className="pt-6">
                 <LocationPanel 
@@ -261,7 +315,7 @@ export default function RequestDetail() {
           )}
 
           {/* ── Smart Matching (requester only) ── */}
-          {request.is_requester === true && (
+          {canManageRequest && !['EXPIRED', 'CANCELLED', 'FULFILLED'].includes(request.status ?? '') && (
             <Card>
               <CardContent className="pt-6">
                 <SmartMatchingPanel
@@ -280,6 +334,7 @@ export default function RequestDetail() {
                   requestId={request.id}
                   donorId={user.id}
                   requestStatus={request.status}
+                  persistedResponseStatus={request.current_user_response_status}
                 />
               </CardContent>
             </Card>
@@ -293,6 +348,8 @@ export default function RequestDetail() {
                   requestId={request.id}
                   donorId={user.id}
                   requestStatus={request.status}
+                  unitsRemainingCapacity={request.units_remaining_capacity}
+                  existingDonation={request.current_user_donation}
                 />
               </CardContent>
             </Card>

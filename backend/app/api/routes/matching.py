@@ -173,12 +173,24 @@ def escalate_matching(
     request = _get_request(request_id, db)
     if not _can_manage_request(request, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to escalate matching")
-    matches_before = len(_get_or_create_matches(request, db))
-    matches_after = len(_get_or_create_matches(request, db))
+    if payload.next_radius_km <= payload.current_radius_km:
+        raise HTTPException(status_code=400, detail="next_radius_km must exceed current_radius_km")
+    matches_before = len(
+        db.query(RequestMatch).filter(RequestMatch.request_id == request.id).all()
+    )
+    new_matches = create_request_matches(
+        db,
+        request,
+        radius_km=payload.next_radius_km,
+        candidate_limit=payload.batch_size,
+    )
+    db.commit()
+    matches_after = matches_before + len(new_matches)
     return {
         "matched_count": matches_after,
-        "notified_count": max(0, matches_after - matches_before),
+        "notified_count": len(new_matches),
         "next_radius_km": payload.next_radius_km,
+        "expanded": bool(new_matches) or payload.next_radius_km != payload.current_radius_km,
     }
 
 

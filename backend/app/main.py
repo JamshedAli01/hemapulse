@@ -32,60 +32,6 @@ app.include_router(donations.router)
 app.include_router(responses.router)
 
 
-# ---------------------------------------------------------------------------
-# Custom Swagger UI — auto-authorizes with the dev admin account on load
-# ---------------------------------------------------------------------------
-_AUTO_AUTH_JS = """
-<script>
-(function autoAuthorize() {
-  // Wait until SwaggerUIBundle is ready
-  const MAX_ATTEMPTS = 40;
-  let attempts = 0;
-
-  function tryAuth() {
-    attempts++;
-    const ui = window.ui;
-    if (!ui) {
-      if (attempts < MAX_ATTEMPTS) setTimeout(tryAuth, 250);
-      return;
-    }
-
-    // Only auto-auth if no token is already stored
-    const stored = ui.getConfigs ? ui.getConfigs().persistAuthorization : false;
-    const authState = ui.authSelectors ? ui.authSelectors.authorized().toJS() : {};
-    if (Object.keys(authState).length > 0) return; // already authorized
-
-    const formData = new URLSearchParams();
-    formData.append("username", "admin@bloodnet.pk");
-    formData.append("password", "Hackathon@123");
-
-    fetch("/api/auth/swagger-login", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formData,
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.access_token) return;
-        ui.authActions.authorize({
-          BearerAuth: {
-            name: "BearerAuth",
-            schema: { type: "http", scheme: "bearer" },
-            value: data.access_token,
-          },
-        });
-        console.log("[AutoAuth] Swagger authorized as admin@bloodnet.pk ✓");
-      })
-      .catch((e) => console.error("[AutoAuth] Failed:", e));
-  }
-
-  // Swagger UI fires a custom event when it's ready
-  window.addEventListener("load", () => setTimeout(tryAuth, 500));
-})();
-</script>
-"""
-
-
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui():
     html = get_swagger_ui_html(
@@ -94,9 +40,7 @@ async def custom_swagger_ui():
         swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
         swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
     )
-    # Inject our auto-auth script just before </body>
-    patched = html.body.decode().replace("</body>", f"{_AUTO_AUTH_JS}\n</body>")
-    return HTMLResponse(content=patched)
+    return HTMLResponse(content=html.body.decode())
 
 
 # ---------------------------------------------------------------------------

@@ -22,4 +22,8 @@ export const notificationService = {
     const response = await apiClient.get('/api/notifications');
     return extractNotifications(response.data);
   },
+
+  markAsRead: async (notificationId: number): Promise<void> => {
+    await apiClient.patch(`/api/notifications/${notificationId}/read`);
+  },
 };

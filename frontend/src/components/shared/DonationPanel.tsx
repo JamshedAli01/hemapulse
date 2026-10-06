@@ -14,11 +14,23 @@ interface DonationPanelProps {
   requestId: number;
   donorId: number;
   requestStatus?: string;
+  unitsRemainingCapacity?: number;
+  existingDonation?: {
+    id: number;
+    units: number;
+    status: 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED';
+  } | null;
 }
 
 type DonationState = 'idle' | 'loading' | 'scheduled' | 'confirming' | 'confirmed' | 'qr_pending' | 'qr_ready' | 'error';
 
-export function DonationPanel({ requestId, donorId, requestStatus }: DonationPanelProps) {
+export function DonationPanel({
+  requestId,
+  donorId,
+  requestStatus,
+  unitsRemainingCapacity,
+  existingDonation = null,
+}: DonationPanelProps) {
   const [state, setState] = useState<DonationState>('idle');
   const [donation, setDonation] = useState<Donation | null>(null);
   const [units, setUnits] = useState('1');
@@ -29,13 +41,28 @@ export function DonationPanel({ requestId, donorId, requestStatus }: DonationPan
 
   const isTerminal = requestStatus === 'CANCELLED' || requestStatus === 'FULFILLED';
   if (isTerminal) return null;
+  if (requestStatus === 'EXPIRED') {
+    return (
+      <Alert variant="default">
+        <AlertTitle>Donation scheduling unavailable</AlertTitle>
+        <AlertDescription>
+          Donation scheduling is unavailable because this request has expired.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  const remainingCapacity = unitsRemainingCapacity ?? null;
 
   const isLoading = state === 'loading';
 
   const handleSchedule = async () => {
-    const parsedUnits = parseInt(units, 10);
-    if (isNaN(parsedUnits) || parsedUnits < 1) {
-      setError('Units must be a positive integer.');
+    const parsedUnits = Number.parseInt(units, 10);
+    if (!Number.isInteger(parsedUnits) || parsedUnits < 1) {
+      setError('Donation units must be a positive whole number.');
+      return;
+    }
+    if (remainingCapacity !== null && parsedUnits > remainingCapacity) {
+      setError(`You can schedule at most ${remainingCapacity} unit${remainingCapacity === 1 ? '' : 's'} for this request.`);
       return;
     }
     setState('loading');
@@ -112,6 +139,23 @@ export function DonationPanel({ requestId, donorId, requestStatus }: DonationPan
         </p>
       </div>
 
+      {existingDonation?.status === 'SCHEDULED' && (
+        <Alert variant="success">
+          <AlertTitle>Donation Scheduled</AlertTitle>
+          <AlertDescription>
+            {existingDonation.units} unit{existingDonation.units !== 1 ? 's' : ''} already scheduled for this request.
+            {remainingCapacity !== null && ` ${remainingCapacity} unit${remainingCapacity !== 1 ? 's' : ''} remain available.`}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!existingDonation && remainingCapacity === 0 && (
+        <Alert>
+          <AlertTitle>No additional units available</AlertTitle>
+          <AlertDescription>No additional units can be scheduled for this request.</AlertDescription>
+        </Alert>
+      )}
+
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -119,17 +163,29 @@ export function DonationPanel({ requestId, donorId, requestStatus }: DonationPan
       )}
 
       {/* ── Step 1: Schedule ── */}
-      {(state === 'idle' || state === 'error') && (
+      {!existingDonation && remainingCapacity !== 0 && (state === 'idle' || state === 'error') && (
         <div className="rounded-lg border p-4 space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="donation-units">Units to Donate</Label>
+            <Label htmlFor="donation-units">Units to donate</Label>
             <Input
               id="donation-units"
               type="number"
               min={1}
+              max={remainingCapacity ?? undefined}
+              step={1}
               value={units}
-              onChange={(e) => setUnits(e.target.value)}
-              placeholder="e.g. 1"
+              onChange={(event) => {
+                const value = event.target.value;
+                if (
+                  remainingCapacity !== null &&
+                  value !== '' &&
+                  Number.parseInt(value, 10) > remainingCapacity
+                ) {
+                  setUnits(String(remainingCapacity));
+                  return;
+                }
+                setUnits(value);
+              }}
             />
           </div>
           <Button onClick={handleSchedule} isLoading={isLoading} disabled={isLoading}>

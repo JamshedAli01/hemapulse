@@ -11,6 +11,8 @@ from app.models.notification import Notification
 from app.models.enums import NotificationStatus
 from app.models.blood_request import BloodRequest
 from app.models.donor import Donor
+from app.models.request_match import RequestMatch
+from app.models.enums import RequestStatus
 from app.schemas.notification import SendNotificationRequest
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
@@ -52,8 +54,22 @@ def send_notifications(
         raise HTTPException(status_code=404, detail="Request not found")
     if request.created_by_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to send notifications")
+    if request.status in {
+        RequestStatus.CANCELLED,
+        RequestStatus.FULFILLED,
+        RequestStatus.EXPIRED,
+    }:
+        raise HTTPException(status_code=409, detail="Request is no longer active")
 
-    donors = db.query(Donor).filter(Donor.id.in_(payload.donor_ids)).all()
+    donors = (
+        db.query(Donor)
+        .join(RequestMatch, RequestMatch.donor_id == Donor.id)
+        .filter(
+            RequestMatch.request_id == request.id,
+            Donor.id.in_(payload.donor_ids),
+        )
+        .all()
+    )
     donors_by_id = {donor.id: donor for donor in donors}
     missing = sorted(set(payload.donor_ids) - set(donors_by_id))
     if missing:

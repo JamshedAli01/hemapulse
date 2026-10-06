@@ -9,6 +9,12 @@ from app.core.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.donor import Donor
 from app.models.enums import BloodGroup
+from app.models.enums import DonorResponseStatus, RequestStatus
+from app.models.blood_request import BloodRequest
+from app.models.donor_response import DonorResponse
+from app.models.request_match import RequestMatch
+from app.services.location import is_valid_pakistan_location
+from app.services.request_lifecycle import effective_request_status
 
 router = APIRouter(prefix="/api/donors", tags=["Donors"])
 
@@ -60,6 +66,8 @@ def create_donor_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    if not is_valid_pakistan_location(payload.latitude, payload.longitude):
+        raise HTTPException(status_code=422, detail="Donor coordinates must be within Pakistan")
     existing = db.query(Donor).filter(Donor.user_id == current_user.id).first()
     if existing:
         raise HTTPException(status_code=409, detail="Donor profile already exists")
@@ -103,7 +111,12 @@ def update_donor_profile(
     if not donor:
         raise HTTPException(status_code=404, detail="Donor profile not found")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    latitude = updates.get("latitude", donor.latitude)
+    longitude = updates.get("longitude", donor.longitude)
+    if not is_valid_pakistan_location(latitude, longitude):
+        raise HTTPException(status_code=422, detail="Donor coordinates must be within Pakistan")
+    for field, value in updates.items():
         setattr(donor, field, value)
 
     db.commit()
@@ -122,3 +135,67 @@ def list_available_donors(
         .all()
     )
     return donors
+
+
+@router.get("/matches")
+def list_my_matches(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    donor = db.query(Donor).filter(Donor.user_id == current_user.id).first()
+    if not donor:
+        raise HTTPException(status_code=404, detail="Donor profile not found")
+
+    rows = (
+        db.query(RequestMatch, BloodRequest, DonorResponse)
+        .join(BloodRequest, BloodRequest.id == RequestMatch.request_id)
+        .outerjoin(
+            DonorResponse,
+            (DonorResponse.request_id == RequestMatch.request_id)
+            & (DonorResponse.donor_id == donor.id),
+        )
+        .filter(RequestMatch.donor_id == donor.id)
+        .order_by(RequestMatch.matched_at.desc())
+        .all()
+    )
+    active_statuses = {
+        RequestStatus.PENDING,
+        RequestStatus.VERIFIED,
+        RequestStatus.MATCHING,
+    }
+    return [
+        {
+            "request_id": request.id,
+            "blood_group": request.blood_group.value,
+            "urgency": request.urgency.value,
+            "units_required": request.units_required,
+            "units_fulfilled": request.units_fulfilled,
+            "hospital": request.hospital.name,
+            "city": request.hospital.city,
+            "address": request.hospital.address,
+            "distance_km": float(match.distance_km) if match.distance_km is not None else None,
+            "request_status": effective_request_status(
+                request.status, request.required_before
+            ).value,
+            "response_status": response.status.value if response else None,
+            "is_committed": bool(
+                response
+                and response.status == DonorResponseStatus.ACCEPTED
+                and effective_request_status(
+                    request.status, request.required_before
+                ) in active_statuses
+            ),
+            "is_active_match": effective_request_status(
+                request.status, request.required_before
+            ) in active_statuses
+            and response is None,
+            "is_history_match": (
+                response is not None
+                and response.status == DonorResponseStatus.DECLINED
+            )
+            or effective_request_status(
+                request.status, request.required_before
+            ) == RequestStatus.EXPIRED,
+        }
+        for match, request, response in rows
+    ]

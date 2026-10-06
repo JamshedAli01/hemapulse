@@ -9,6 +9,8 @@ from app.core.dependencies import get_current_active_user
 from app.db.session import get_db
 from app.models.hospital import Hospital
 from app.models.user import User
+from app.models.enums import UserRole
+from app.services.location import is_valid_pakistan_location
 
 router = APIRouter(prefix="/api/hospitals", tags=["Hospitals"])
 
@@ -29,8 +31,8 @@ class HospitalCreate(BaseModel):
     name: str
     address: str
     city: str
-    latitude: float = Field(..., ge=-90.0, le=90.0)
-    longitude: float = Field(..., ge=-180.0, le=180.0)
+    latitude: float = Field(..., ge=23.5, le=37.5)
+    longitude: float = Field(..., ge=60.5, le=77.5)
     phone: str | None = None
 
 
@@ -57,6 +59,10 @@ def create_hospital(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    if current_user.role not in {UserRole.ADMIN, UserRole.HOSPITAL}:
+        raise HTTPException(status_code=403, detail="Hospital management requires an authorized role")
+    if not is_valid_pakistan_location(hospital_in.latitude, hospital_in.longitude):
+        raise HTTPException(status_code=422, detail="Hospital coordinates must be within Pakistan")
     hospital = Hospital(**hospital_in.model_dump())
     db.add(hospital)
     db.commit()
@@ -126,6 +132,8 @@ def resolve_location(
         except (KeyError, TypeError, ValueError):
             continue
         if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            continue
+        if not is_valid_pakistan_location(latitude, longitude):
             continue
         address_data = result.get("address") or {}
         city = (

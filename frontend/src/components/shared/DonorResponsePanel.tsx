@@ -12,18 +12,29 @@ interface DonorResponsePanelProps {
   donorId: number;
   /** Pass request status to hide panel when terminal */
   requestStatus?: string;
+  persistedResponseStatus?: 'ACCEPTED' | 'DECLINED' | null;
 }
 
 type ResponseState = 'idle' | 'declining' | 'loading' | 'accepted' | 'declined' | 'error';
 
-export function DonorResponsePanel({ requestId, donorId, requestStatus }: DonorResponsePanelProps) {
+export function DonorResponsePanel({
+  requestId,
+  donorId,
+  requestStatus,
+  persistedResponseStatus = null,
+}: DonorResponsePanelProps) {
   const [state, setState] = useState<ResponseState>('idle');
   const [declineReason, setDeclineReason] = useState('');
   const [error, setError] = useState('');
 
   const isTerminal = requestStatus === 'CANCELLED' || requestStatus === 'FULFILLED';
+  const isExpired = requestStatus === 'EXPIRED';
 
   const isLoading = state === 'loading';
+  const responseStatus =
+    state === 'accepted' || state === 'declined'
+      ? state.toUpperCase()
+      : persistedResponseStatus;
 
   const handleAccept = async () => {
     setState('loading');
@@ -54,18 +65,49 @@ export function DonorResponsePanel({ requestId, donorId, requestStatus }: DonorR
 
   if (isTerminal) return null;
 
-  if (state === 'accepted') {
+  if (isExpired && responseStatus === 'ACCEPTED') {
     return (
-      <Alert variant="success">
-        <AlertTitle>Response recorded</AlertTitle>
+      <Alert variant="default">
+        <AlertTitle>Commitment ended</AlertTitle>
         <AlertDescription>
-          You have accepted this blood request. Thank you — your donation can save a life.
+          This commitment has ended because the request expired.
         </AlertDescription>
       </Alert>
     );
   }
 
-  if (state === 'declined') {
+  if (isExpired && responseStatus === 'DECLINED') {
+    return (
+      <Alert variant="default">
+        <AlertTitle>Response recorded</AlertTitle>
+        <AlertDescription>You declined this request. It has now expired.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (isExpired) {
+    return (
+      <Alert variant="default">
+        <AlertTitle>Request expired</AlertTitle>
+        <AlertDescription>
+          This request has expired and is no longer accepting donor responses.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (responseStatus === 'ACCEPTED') {
+    return (
+      <Alert variant="success">
+        <AlertTitle>Response recorded</AlertTitle>
+        <AlertDescription>
+          You're committed to this request. 1 unit committed. Thank you for helping save a life.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (responseStatus === 'DECLINED') {
     return (
       <Alert variant="default">
         <AlertTitle>Response recorded</AlertTitle>

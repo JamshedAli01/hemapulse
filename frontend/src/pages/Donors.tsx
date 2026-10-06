@@ -3,11 +3,8 @@ import { Link } from 'react-router-dom';
 import { CheckCircle, Droplet, MapPin, RefreshCcw, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types/auth';
-import { DonorProfile } from '../types/donor';
-import { BloodRequest } from '../types/request';
+import { DonorMatch, DonorProfile } from '../types/donor';
 import { donorService } from '../services/donorService';
-import { notificationService } from '../services/notificationService';
-import { requestService } from '../services/requestService';
 import { handleApiError } from '../services/apiClient';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
@@ -20,7 +17,7 @@ import { RequestStatusBadge } from '../components/shared/RequestStatusBadge';
 export default function Donors() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<DonorProfile | null>(null);
-  const [requests, setRequests] = useState<BloodRequest[]>([]);
+  const [matches, setMatches] = useState<DonorMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState('');
@@ -31,11 +28,9 @@ export default function Donors() {
     setError('');
     try {
       const donor = await donorService.getDonor();
-      const notifications = await notificationService.listNotifications();
-      const ids = [...new Set(notifications.map((item) => item.request_id).filter((id): id is number => typeof id === 'number'))];
-      const loadedRequests = await Promise.all(ids.map((id) => requestService.getRequest(id)));
+      const donorMatches = await donorService.listMatches();
       setProfile(donor);
-      setRequests(loadedRequests);
+      setMatches(donorMatches);
     } catch (err) {
       setError(handleApiError(err));
     } finally {
@@ -85,12 +80,13 @@ export default function Donors() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Relevant Blood Requests</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Available Matches</CardTitle></CardHeader>
           <CardContent>
-            {requests.length === 0 ? <EmptyState title="No matched requests" description="You will see requests here when the system notifies you of a match." icon={<Droplet className="h-6 w-6" />} /> : <div className="space-y-3">{requests.map((request) => <Link key={request.id} to={`/requests/${request.id}`} className="block rounded-md border p-4 hover:bg-muted/50"><div className="flex flex-wrap items-center gap-2"><BloodGroupBadge value={request.blood_group} /><RequestStatusBadge value={request.status} /></div><p className="mt-2 text-sm">{request.description}</p><p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3.5 w-3.5" />Hospital #{request.hospital_id} · {request.units_required} unit{request.units_required === 1 ? '' : 's'}</p></Link>)}</div>}
-            <p className="mt-4 text-xs text-muted-foreground">Accept/decline actions are not available in the deployed backend donor API; open a request for details.</p>
+            {matches.filter((match) => match.is_active_match).length === 0 ? <EmptyState title="No available matches" description="New eligible matches will appear here." icon={<Droplet className="h-6 w-6" />} /> : <div className="space-y-3">{matches.filter((match) => match.is_active_match).map((match) => <Link key={match.request_id} to={`/requests/${match.request_id}`} className="block rounded-md border p-4 hover:bg-muted/50"><div className="flex flex-wrap items-center gap-2"><BloodGroupBadge value={match.blood_group} /><RequestStatusBadge value={match.request_status} /></div><p className="mt-2 font-medium">{match.hospital} · {match.city}</p><p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3.5 w-3.5" />{match.distance_km != null ? `${match.distance_km.toFixed(1)} km` : 'Distance unavailable'} · {match.units_required} unit{match.units_required === 1 ? '' : 's'}</p></Link>)}</div>}
           </CardContent>
         </Card>
+        {matches.some((match) => match.is_committed) && <Card><CardHeader><CardTitle>My Active Commitment</CardTitle></CardHeader><CardContent className="space-y-3">{matches.filter((match) => match.is_committed).map((match) => <Link key={match.request_id} to={`/requests/${match.request_id}`} className="block rounded-md border p-4"><div className="flex items-center gap-2"><BloodGroupBadge value={match.blood_group} /><span className="text-sm font-medium">Request #{match.request_id}</span></div><p className="mt-2 text-sm">{match.hospital} · Donation commitment active</p></Link>)}</CardContent></Card>}
+        {matches.some((match) => match.is_history_match) && <Card><CardHeader><CardTitle>Response History</CardTitle></CardHeader><CardContent className="space-y-3">{matches.filter((match) => match.is_history_match).map((match) => <Link key={match.request_id} to={`/requests/${match.request_id}`} className="block rounded-md border p-4"><div className="flex items-center gap-2"><BloodGroupBadge value={match.blood_group} /><RequestStatusBadge value={match.request_status} /></div><p className="mt-2 text-sm">{match.hospital} · {match.request_status === 'EXPIRED' ? 'This request expired' : 'You declined this request'}</p></Link>)}</CardContent></Card>}
       </>}
       {!isLoading && !profile && <EmptyState title="Donor profile not found" description="Your account does not have a donor profile yet. Ask an administrator to create one." icon={<Users className="h-6 w-6" />} />}
     </div>

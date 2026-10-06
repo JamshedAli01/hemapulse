@@ -40,6 +40,7 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [markingRead, setMarkingRead] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -55,6 +56,29 @@ export default function Notifications() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const markAsRead = async (notification: Notification) => {
+    if (notification.status === 'READ' || markingRead.has(notification.id)) return;
+
+    setMarkingRead((current) => new Set(current).add(notification.id));
+    try {
+      await notificationService.markAsRead(notification.id);
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, status: 'READ' } : item
+        )
+      );
+      window.dispatchEvent(new Event('hemapulse:notifications-updated'));
+    } catch (err) {
+      setError(handleApiError(err));
+    } finally {
+      setMarkingRead((current) => {
+        const next = new Set(current);
+        next.delete(notification.id);
+        return next;
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -110,12 +134,13 @@ export default function Notifications() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">{notifications.length} notification{notifications.length !== 1 ? 's' : ''}</p>
           {notifications.map((notif) => {
-            const isUnread = notif.is_read === false || notif.read === false;
+            const isUnread = notif.status !== 'READ';
             const timestamp = notif.sent_at ?? notif.created_at;
             return (
               <Card
                 key={notif.id}
                 className={isUnread ? 'border-primary/30 bg-primary/5' : ''}
+                onClick={() => markAsRead(notif)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">

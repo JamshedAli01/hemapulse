@@ -1,5 +1,10 @@
 from pydantic import BaseModel, Field, ConfigDict
-from app.models.enums import BloodGroup, RequestStatus, RequestUrgency
+from app.models.enums import (
+    BloodGroup,
+    DonorResponseStatus,
+    RequestStatus,
+    RequestUrgency,
+)
 from datetime import datetime
 from typing import Optional
 
@@ -49,5 +54,9 @@ class BloodRequestResponse(BaseModel):
     fulfilled_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+    current_user_response_status: Optional[DonorResponseStatus] = None
+    committed_donor_count: int = 0
+    units_scheduled: int = 0
+    units_remaining_capacity: int = 0
 
     model_config = ConfigDict(from_attributes=True)

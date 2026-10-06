@@ -11,11 +11,22 @@ from app.models.enums import (
 )
 from app.models.notification import Notification
 from app.models.request_match import RequestMatch
+from app.models.donor_response import DonorResponse
+from app.models.enums import DonorResponseStatus
 from app.services.compatibility import compatible_donor_groups
 from app.services.distance import haversine_km
 
 
-def create_request_matches(db: Session, request: BloodRequest) -> list[RequestMatch]:
+DEFAULT_MATCH_RADIUS_KM = 50.0
+MAX_CANDIDATES = 10
+
+
+def create_request_matches(
+    db: Session,
+    request: BloodRequest,
+    radius_km: float = DEFAULT_MATCH_RADIUS_KM,
+    candidate_limit: int | None = None,
+) -> list[RequestMatch]:
     """Create matches and in-app notifications for eligible donors."""
     if request.status not in {
         RequestStatus.PENDING,
@@ -36,6 +47,26 @@ def create_request_matches(db: Session, request: BloodRequest) -> list[RequestMa
         .filter(RequestMatch.request_id == request.id)
         .all()
     }
+    committed_donor_ids = {
+        donor_id
+        for (donor_id,) in (
+            db.query(DonorResponse.donor_id)
+            .join(BloodRequest, BloodRequest.id == DonorResponse.request_id)
+            .filter(
+                DonorResponse.status == DonorResponseStatus.ACCEPTED,
+                BloodRequest.id != request.id,
+                BloodRequest.status.notin_(
+                    [
+                        RequestStatus.FULFILLED,
+                        RequestStatus.CANCELLED,
+                        RequestStatus.EXPIRED,
+                    ]
+                ),
+                BloodRequest.required_before > datetime.now(timezone.utc),
+            )
+            .all()
+        )
+    }
     compatible_groups = compatible_donor_groups(request.blood_group.value)
     donors = (
         db.query(Donor)
@@ -47,21 +78,28 @@ def create_request_matches(db: Session, request: BloodRequest) -> list[RequestMa
         .all()
     )
 
-    matches = []
+    candidates = []
     for donor in donors:
-        if donor.id in existing_donor_ids:
+        if donor.id in existing_donor_ids or donor.id in committed_donor_ids:
             continue
-
         distance = haversine_km(
             request.latitude,
             request.longitude,
             donor.latitude,
             donor.longitude,
         )
+        if distance <= radius_km:
+            candidates.append((distance, donor))
+    candidates.sort(key=lambda item: item[0])
+    limit = min(candidate_limit or max(request.units_required * 3, 5), MAX_CANDIDATES)
+
+    matches = []
+    for distance, donor in candidates[:limit]:
         match = RequestMatch(
             request_id=request.id,
             donor_id=donor.id,
             distance_km=round(distance, 3),
+            radius_km=radius_km,
             is_notified=True,
         )
         db.add(match)
